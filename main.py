@@ -16,9 +16,7 @@ from backend.routers import categorias
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.RESET_SEED:
-    Base.metadata.drop_all(bind=engine)
-Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         if settings.RESET_SEED:
