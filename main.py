@@ -16,14 +16,13 @@ from backend.routers import categorias
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.RESET_SEED:
+        Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         if settings.RESET_SEED:
-            for model in [CompHistorico, CompPedido, CompCotacao, CompRequisicao,
-                          CompItem, CompFornecedor, CompCategoria, CompUser]:
-                db.query(model).delete()
-            db.commit()
+            pass  # tabelas já foram recriadas pelo drop_all + create_all
 
         if db.query(CompUser).count() == 0:
             # Usuários
