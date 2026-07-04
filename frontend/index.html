@@ -258,6 +258,7 @@ tbody td{padding:10px 14px;font-size:13px;vertical-align:middle;}
 // ESTADO GLOBAL
 // ═══════════════════════════════════════════════════════════
 const API = '';
+const R = id => document.getElementById(id);
 let token = localStorage.getItem('compras_token') || '';
 let currentUser = JSON.parse(localStorage.getItem('compras_user') || 'null');
 let currentPage = 'dashboard';
@@ -333,7 +334,6 @@ function navigate(page) {
 // ═══════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════
-const R = id => document.getElementById(id);
 function fmt(v) { return new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0); }
 function fmtDate(d) { if(!d) return '-'; return new Date(d+(d.includes('T')?'':'T12:00:00')).toLocaleDateString('pt-BR'); }
 function fmtDt(d) { if(!d) return '-'; return new Date(d).toLocaleString('pt-BR'); }
