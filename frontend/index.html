@@ -657,42 +657,157 @@ async function loadRequisicoes(status) {
 }
 
 async function showNovaRequisicao() {
-  const itens = await api('GET','/api/itens/');
-  const opts = (itens||[]).map(i=>`<option value="${i.id}" data-unit="${i.unidade}">${i.codigo} — ${i.nome} (${i.unidade})</option>`).join('');
+  window._itens_cache = await api('GET','/api/itens/') || [];
+  window._nreq_item_id = null;
+  window._nreq_item_unit = '';
+
   showModal('Nova Requisição de Compra',`
-    <div class="form-row">
-      <div class="form-group"><label>Item *</label><select id="nreq-item" onchange="updateUnit()">${opts}</select></div>
-      <div class="form-group"><label>Quantidade *</label>
-        <div style="display:flex;gap:6px;"><input type="number" id="nreq-qty" min="0.01" step="0.01" value="1" style="flex:1;"/>
-        <input type="text" id="nreq-unit" readonly style="width:60px;background:var(--card2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px;color:var(--text2);"/></div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;justify-content:space-between;">
+        Item *
+        <button type="button" class="btn btn-ghost btn-sm" onclick="showCriarItemInline()" style="font-size:11px;padding:3px 8px;">+ Novo item</button>
+      </label>
+      <div style="position:relative;">
+        <input type="text" id="nreq-busca" placeholder="🔍 Digite para buscar o item..."
+          oninput="filtrarItensReq(this.value)"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
+        <div id="nreq-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:0 0 var(--radius2) var(--radius2);z-index:999;max-height:200px;overflow-y:auto;box-shadow:var(--shadow);"></div>
+      </div>
+      <div id="nreq-item-selecionado" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.3);border-radius:var(--radius2);font-size:13px;display:flex;align-items:center;justify-content:space-between;">
+        <span id="nreq-item-label">-</span>
+        <button type="button" onclick="limparItemReq()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;">✕</button>
       </div>
     </div>
     <div class="form-row">
-      <div class="form-group"><label>Urgência</label><select id="nreq-urg">
-        <option value="baixa">Baixa</option><option value="media" selected>Média</option>
-        <option value="alta">Alta</option><option value="urgente">Urgente</option></select></div>
-      <div class="form-group"><label>Data necessidade</label><input type="date" id="nreq-dt"/></div>
+      <div class="form-group"><label>Quantidade *</label>
+        <div style="display:flex;gap:6px;">
+          <input type="number" id="nreq-qty" min="0.01" step="0.01" value="1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
+          <input type="text" id="nreq-unit" readonly style="width:60px;background:var(--card2);border:1px solid var(--border);border-radius:var(--radius2);padding:8px;color:var(--text2);font-size:13px;text-align:center;"/>
+        </div>
+      </div>
+      <div class="form-group"><label>Urgência</label>
+        <select id="nreq-urg" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+          <option value="baixa">Baixa</option><option value="media" selected>Média</option>
+          <option value="alta">Alta</option><option value="urgente">Urgente</option>
+        </select>
+      </div>
     </div>
-    <div class="form-group"><label>Justificativa</label><textarea id="nreq-just"></textarea></div>
+    <div class="form-group"><label>Data necessidade</label>
+      <input type="date" id="nreq-dt" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/>
+    </div>
+    <div class="form-group"><label>Justificativa</label>
+      <textarea id="nreq-just" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;resize:vertical;min-height:70px;"></textarea>
+    </div>
     <div id="nreq-msg" style="font-size:12px;"></div>`,
     `<button class="btn btn-ghost" onclick="closeModal('modal-main')">Cancelar</button>
      <button class="btn btn-primary" onclick="submitRequisicao()">Criar Requisição</button>`);
-  updateUnit();
 }
+
+function filtrarItensReq(busca) {
+  const dd = R('nreq-dropdown');
+  if (!dd) return;
+  const q = busca.trim().toLowerCase();
+  if (!q) { dd.style.display = 'none'; return; }
+  const resultados = (window._itens_cache||[]).filter(i =>
+    i.nome.toLowerCase().includes(q) || i.codigo.toLowerCase().includes(q)
+  ).slice(0, 10);
+  if (!resultados.length) {
+    dd.innerHTML = '<div style="padding:10px 12px;color:var(--text3);font-size:13px;">Nenhum item encontrado</div>';
+  } else {
+    dd.innerHTML = resultados.map(i => `
+      <div onclick="selecionarItemReq(${i.id},'${i.nome.replace(/'/g,"&apos;")}','${i.unidade}','${i.codigo}')"
+        style="padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;"
+        onmouseover="this.style.background='rgba(79,142,247,.08)'" onmouseout="this.style.background=''">
+        <b style="color:var(--accent);font-size:11px;">${i.codigo}</b> — ${i.nome}
+        <span style="color:var(--text3);font-size:11px;float:right;">${i.unidade}</span>
+      </div>`).join('');
+  }
+  dd.style.display = 'block';
+}
+
+function selecionarItemReq(id, nome, unidade, codigo) {
+  window._nreq_item_id = id;
+  window._nreq_item_unit = unidade;
+  const busca = R('nreq-busca');
+  const dd = R('nreq-dropdown');
+  const label = R('nreq-item-label');
+  const box = R('nreq-item-selecionado');
+  const unit = R('nreq-unit');
+  if (busca) busca.value = '';
+  if (dd) dd.style.display = 'none';
+  if (label) label.textContent = `${codigo} — ${nome} (${unidade})`;
+  if (box) box.style.display = 'flex';
+  if (unit) unit.value = unidade;
+}
+
+function limparItemReq() {
+  window._nreq_item_id = null;
+  window._nreq_item_unit = '';
+  const box = R('nreq-item-selecionado');
+  const unit = R('nreq-unit');
+  if (box) box.style.display = 'none';
+  if (unit) unit.value = '';
+}
+
+async function showCriarItemInline() {
+  // Abre modal de criar item e após salvar volta para a requisição
+  const cats = _categorias||[];
+  const catOp = `<option value="">— Sem categoria —</option>` + cats.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+  showModal('Novo Item',`
+    <div class="alert alert-info" style="font-size:12px;margin-bottom:14px;">O código será gerado automaticamente. Após salvar, o item já estará disponível na requisição.</div>
+    <div class="form-group"><label>Nome *</label><input type="text" id="ci-nome" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Unidade</label>
+        <select id="ci-un" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;">
+          <option>UN</option><option>KG</option><option>L</option><option>M</option>
+          <option>CX</option><option>SC</option><option>RS</option><option>LT</option><option>MT</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="ci-cat" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;">${catOp}</select>
+      </div>
+    </div>
+    <div class="form-group"><label>Descrição</label>
+      <textarea id="ci-desc" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius2);padding:8px 12px;color:var(--text);font-size:13px;outline:none;resize:vertical;min-height:60px;"></textarea>
+    </div>
+    <div id="ci-msg" style="font-size:12px;"></div>`,
+    `<button class="btn btn-ghost" onclick="showNovaRequisicao()">← Voltar</button>
+     <button class="btn btn-primary" onclick="submitItemInline()">Salvar e usar item</button>`);
+}
+
+async function submitItemInline() {
+  const msg = R('ci-msg');
+  const nome = R('ci-nome').value.trim();
+  if (!nome) { msg.style.color='var(--red)'; msg.textContent='Informe o nome do item'; return; }
+  try {
+    const novo = await api('POST','/api/itens/',{
+      nome, unidade: R('ci-un').value,
+      categoria_id: parseInt(R('ci-cat').value)||null,
+      descricao: R('ci-desc').value||null
+    });
+    // Recarrega lista de itens e volta para requisição com item já selecionado
+    window._itens_cache = await api('GET','/api/itens/') || [];
+    await showNovaRequisicao();
+    selecionarItemReq(novo.id, novo.nome, novo.unidade, novo.codigo);
+  } catch(e) { msg.style.color='var(--red)'; msg.textContent=e.message; }
+}
+
 function updateUnit() {
-  const sel = R('nreq-item'); if (!sel) return;
-  const opt = sel.options[sel.selectedIndex];
-  if (R('nreq-unit')) R('nreq-unit').value = opt?.dataset?.unit || '';
+  // mantida por compatibilidade mas não mais usada no novo fluxo
 }
 async function submitRequisicao() {
   const msg = R('nreq-msg');
+  if (!window._nreq_item_id) {
+    msg.style.color='var(--red)'; msg.textContent='Selecione um item da lista'; return;
+  }
   try {
     const novo = await api('POST','/api/requisicoes/',{
-      item_id: parseInt(R('nreq-item').value), quantidade: parseFloat(R('nreq-qty').value),
+      item_id: window._nreq_item_id, quantidade: parseFloat(R('nreq-qty').value),
       urgencia: R('nreq-urg').value, justificativa: R('nreq-just').value||null,
       data_necessidade: R('nreq-dt').value||null
     });
     closeModal('modal-main');
+    window._nreq_item_id = null;
     if (currentPage==='requisicoes') renderRequisicoes();
     else if (currentPage==='kanban' && novo) refreshKanbanCard('req', novo.id, novo);
   } catch(e) { msg.style.color='var(--red)'; msg.textContent=e.message; }
