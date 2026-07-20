@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 from backend.core.database import get_db
 from backend.core.security import get_current_user, require_roles
-from backend.models.models import CompPedido, CompRequisicao, CompFornecedor, CompCotacao, CompHistorico, CompUser
+from backend.models.models import CompPedido, CompRequisicao, CompRequisicaoItem, CompFornecedor, CompCotacao, CompHistorico, CompUser
 from backend.schemas.schemas import PedidoCreate, PedidoUpdate, PedidoAprovar, PedidoPagamento, PedidoRecebimento, PedidoOut, HistoricoOut
 
 router = APIRouter(prefix="/api/pedidos", tags=["Pedidos de Compra"])
@@ -49,13 +49,23 @@ def create_pedido(data: PedidoCreate, db: Session = Depends(get_db), current_use
     if not forn:
         raise HTTPException(status_code=404, detail="Fornecedor não encontrado")
 
+    # Pega dados do item: prioriza o item específico da requisição
+    req_item = None
+    if data.requisicao_item_id:
+        req_item = db.query(CompRequisicaoItem).filter(CompRequisicaoItem.id == data.requisicao_item_id).first()
+
+    item_id = req_item.item_id if req_item else getattr(req, 'item_id', 0)
+    item_nome = req_item.item_nome if req_item else getattr(req, 'item_nome', '')
+    item_unidade = req_item.item_unidade if req_item else getattr(req, 'item_unidade', 'UN')
+
     pedido = CompPedido(
         numero=next_numero_pc(db),
         requisicao_id=req.id,
         requisicao_numero=req.numero,
-        item_id=req.item_id,
-        item_nome=req.item_nome,
-        item_unidade=req.item_unidade,
+        requisicao_item_id=data.requisicao_item_id,
+        item_id=item_id,
+        item_nome=item_nome,
+        item_unidade=item_unidade,
         quantidade=data.quantidade,
         fornecedor_id=forn.id,
         fornecedor_nome=forn.razao_social,
@@ -78,8 +88,16 @@ def create_pedido(data: PedidoCreate, db: Session = Depends(get_db), current_use
         if cot:
             cot.selecionada = True
 
-    # atualiza status da requisição
-    req.status = "pedido_gerado"
+    # atualiza status do item da req e da req geral
+    if req_item:
+        req_item.status = "pedido_gerado"
+    # verifica se todos os itens têm pedido
+    from backend.models.models import CompRequisicaoItem as CRI
+    todos = db.query(CRI).filter(CRI.requisicao_id == req.id).all()
+    if all(i.status == "pedido_gerado" for i in todos):
+        req.status = "pedido_gerado"
+    elif any(i.status in ("cotado","pedido_gerado") for i in todos):
+        req.status = "cotando"
     db.flush()
 
     registrar_historico(db, pedido, "aguardando_aprovacao", current_user, "Pedido criado")

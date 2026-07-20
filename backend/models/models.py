@@ -2,8 +2,6 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, 
 from datetime import datetime
 from backend.core.database import Base
 
-# ─── Usuários ─────────────────────────────────────────────────────────────────
-
 class CompUser(Base):
     __tablename__ = "comp_users"
     id = Column(Integer, primary_key=True, index=True)
@@ -17,16 +15,12 @@ class CompUser(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# ─── Categorias (compartilhadas entre itens e fornecedores) ───────────────────
-
 class CompCategoria(Base):
     __tablename__ = "comp_categorias"
     id = Column(Integer, primary_key=True, index=True)
     nome = Column(String(100), unique=True, nullable=False)
     descricao = Column(String(200), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-# ─── Itens ────────────────────────────────────────────────────────────────────
 
 class CompItem(Base):
     __tablename__ = "comp_itens"
@@ -41,8 +35,6 @@ class CompItem(Base):
     observacoes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-# ─── Fornecedores ─────────────────────────────────────────────────────────────
 
 class CompFornecedor(Base):
     __tablename__ = "comp_fornecedores"
@@ -61,16 +53,11 @@ class CompFornecedor(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# ─── Requisições ──────────────────────────────────────────────────────────────
-
+# ─── Requisições — cabeçalho ──────────────────────────────────────────────────
 class CompRequisicao(Base):
     __tablename__ = "comp_requisicoes"
     id = Column(Integer, primary_key=True, index=True)
     numero = Column(String(20), unique=True, nullable=False, index=True)
-    item_id = Column(Integer, nullable=False)
-    item_nome = Column(String(200), nullable=False)
-    item_unidade = Column(String(20), nullable=False, default="UN")
-    quantidade = Column(Float, nullable=False)
     urgencia = Column(String(20), nullable=False, default="media")
     justificativa = Column(Text, nullable=True)
     solicitante_id = Column(Integer, nullable=False)
@@ -81,14 +68,30 @@ class CompRequisicao(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# ─── Cotações ─────────────────────────────────────────────────────────────────
+# ─── Itens da requisição — múltiplos por requisição ───────────────────────────
+class CompRequisicaoItem(Base):
+    __tablename__ = "comp_requisicao_itens"
+    id = Column(Integer, primary_key=True, index=True)
+    requisicao_id = Column(Integer, nullable=False, index=True)
+    item_id = Column(Integer, nullable=False)
+    item_nome = Column(String(200), nullable=False)
+    item_unidade = Column(String(20), nullable=False, default="UN")
+    item_codigo = Column(String(50), nullable=True)
+    quantidade = Column(Float, nullable=False)
+    observacao = Column(Text, nullable=True)
+    # status individual do item dentro da requisição
+    status = Column(String(30), nullable=False, default="pendente")  # pendente, cotado, pedido_gerado
 
+# ─── Cotações — vinculadas ao item da requisição ──────────────────────────────
 class CompCotacao(Base):
     __tablename__ = "comp_cotacoes"
     id = Column(Integer, primary_key=True, index=True)
     requisicao_id = Column(Integer, nullable=False, index=True)
+    requisicao_item_id = Column(Integer, nullable=True, index=True)  # item específico da req
     fornecedor_id = Column(Integer, nullable=False)
     fornecedor_nome = Column(String(200), nullable=False)
+    item_id = Column(Integer, nullable=True)
+    item_nome = Column(String(200), nullable=True)
     preco_unitario = Column(Float, nullable=False)
     quantidade = Column(Float, nullable=False)
     preco_total = Column(Float, nullable=False)
@@ -100,14 +103,14 @@ class CompCotacao(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by = Column(Integer, nullable=True)
 
-# ─── Pedidos ──────────────────────────────────────────────────────────────────
-
+# ─── Pedidos de Compra ────────────────────────────────────────────────────────
 class CompPedido(Base):
     __tablename__ = "comp_pedidos"
     id = Column(Integer, primary_key=True, index=True)
     numero = Column(String(20), unique=True, nullable=False, index=True)
     requisicao_id = Column(Integer, nullable=False, index=True)
     requisicao_numero = Column(String(20), nullable=False)
+    requisicao_item_id = Column(Integer, nullable=True)
     item_id = Column(Integer, nullable=False)
     item_nome = Column(String(200), nullable=False)
     item_unidade = Column(String(20), nullable=False, default="UN")
@@ -121,31 +124,25 @@ class CompPedido(Base):
     prazo_entrega_dias = Column(Integer, nullable=True)
     previsao_entrega = Column(Date, nullable=True)
     status = Column(String(40), nullable=False, default="aguardando_aprovacao")
-    # Aprovação
     aprovado_por_id = Column(Integer, nullable=True)
     aprovado_por_nome = Column(String(120), nullable=True)
     data_aprovacao = Column(DateTime, nullable=True)
     motivo_reprovacao = Column(Text, nullable=True)
-    # Recebimento (simplificado — remove etapa de pagamento separada)
     data_recebimento = Column(Date, nullable=True)
     quantidade_recebida = Column(Float, nullable=True)
     numero_nf = Column(String(50), nullable=True)
     recebido_por_id = Column(Integer, nullable=True)
     recebido_por_nome = Column(String(120), nullable=True)
     obs_recebimento = Column(Text, nullable=True)
-    # Pagamento (mantido para registro, mas não bloqueia fluxo)
     data_pagamento = Column(Date, nullable=True)
     valor_pago = Column(Float, nullable=True)
     forma_pagamento = Column(String(100), nullable=True)
     comprovante_obs = Column(Text, nullable=True)
-
     observacoes = Column(Text, nullable=True)
     created_by = Column(Integer, nullable=False)
     created_by_nome = Column(String(120), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ─── Histórico de pedidos ─────────────────────────────────────────────────────
 
 class CompHistorico(Base):
     __tablename__ = "comp_historico"

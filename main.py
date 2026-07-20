@@ -9,7 +9,7 @@ from backend.core.security import get_password_hash
 from backend.core.config import settings
 from backend.models.models import (
     CompUser, CompCategoria, CompItem, CompFornecedor,
-    CompRequisicao, CompCotacao, CompPedido, CompHistorico
+    CompRequisicao, CompRequisicaoItem, CompCotacao, CompPedido, CompHistorico
 )
 from backend.routers import auth, users, itens, fornecedores, requisicoes, pedidos, dashboard
 from backend.routers import categorias
@@ -97,45 +97,72 @@ async def lifespan(app: FastAPI):
             # Requisições demo
             from datetime import date, timedelta
             hoje = date.today()
-            req1 = CompRequisicao(numero="REQ-0001", item_id=itens_seed[0].id, item_nome=itens_seed[0].nome,
-                                   item_unidade=itens_seed[0].unidade, quantidade=10, urgencia="alta",
-                                   justificativa="Estoque zerado de luvas", solicitante_id=tecnico.id,
+            # Requisição 1 — múltiplos itens (luvas + óculos)
+            req1 = CompRequisicao(numero="REQ-0001", urgencia="alta",
+                                   justificativa="Reposição de EPIs urgente", solicitante_id=tecnico.id,
                                    solicitante_nome=tecnico.nome, status="pedido_gerado",
                                    data_necessidade=hoje + timedelta(days=7))
-            req2 = CompRequisicao(numero="REQ-0002", item_id=itens_seed[2].id, item_nome=itens_seed[2].nome,
-                                   item_unidade=itens_seed[2].unidade, quantidade=5, urgencia="media",
+            db.add(req1); db.flush()
+            ri1a = CompRequisicaoItem(requisicao_id=req1.id, item_id=itens_seed[0].id,
+                item_nome=itens_seed[0].nome, item_unidade=itens_seed[0].unidade,
+                item_codigo=itens_seed[0].codigo, quantidade=10, status="pedido_gerado")
+            ri1b = CompRequisicaoItem(requisicao_id=req1.id, item_id=itens_seed[1].id,
+                item_nome=itens_seed[1].nome, item_unidade=itens_seed[1].unidade,
+                item_codigo=itens_seed[1].codigo, quantidade=5, status="pedido_gerado")
+            db.add_all([ri1a, ri1b]); db.flush()
+
+            # Requisição 2 — item único cotado
+            req2 = CompRequisicao(numero="REQ-0002", urgencia="media",
                                    justificativa="Reposição de estoque", solicitante_id=tecnico.id,
                                    solicitante_nome=tecnico.nome, status="cotando",
                                    data_necessidade=hoje + timedelta(days=15))
-            req3 = CompRequisicao(numero="REQ-0003", item_id=itens_seed[4].id, item_nome=itens_seed[4].nome,
-                                   item_unidade=itens_seed[4].unidade, quantidade=20, urgencia="baixa",
+            db.add(req2); db.flush()
+            ri2a = CompRequisicaoItem(requisicao_id=req2.id, item_id=itens_seed[2].id,
+                item_nome=itens_seed[2].nome, item_unidade=itens_seed[2].unidade,
+                item_codigo=itens_seed[2].codigo, quantidade=5, status="cotado")
+            db.add(ri2a); db.flush()
+
+            # Requisição 3 — aberta, 2 itens
+            req3 = CompRequisicao(numero="REQ-0003", urgencia="baixa",
                                    solicitante_id=gestor.id, solicitante_nome=gestor.nome, status="aberta")
-            db.add_all([req1, req2, req3])
-            db.flush()
+            db.add(req3); db.flush()
+            ri3a = CompRequisicaoItem(requisicao_id=req3.id, item_id=itens_seed[4].id,
+                item_nome=itens_seed[4].nome, item_unidade=itens_seed[4].unidade,
+                item_codigo=itens_seed[4].codigo, quantidade=20, status="pendente")
+            ri3b = CompRequisicaoItem(requisicao_id=req3.id, item_id=itens_seed[6].id,
+                item_nome=itens_seed[6].nome, item_unidade=itens_seed[6].unidade,
+                item_codigo=itens_seed[6].codigo, quantidade=3, status="pendente")
+            db.add_all([ri3a, ri3b]); db.flush()
 
-            cot1 = CompCotacao(requisicao_id=req1.id, fornecedor_id=forn_seed[0].id,
-                                fornecedor_nome=forn_seed[0].razao_social, preco_unitario=45.90,
-                                quantidade=10, preco_total=459.00, prazo_entrega_dias=5,
-                                condicao_pagamento="30 dias", selecionada=True, created_by=gestor.id)
-            cot2 = CompCotacao(requisicao_id=req2.id, fornecedor_id=forn_seed[1].id,
-                                fornecedor_nome=forn_seed[1].razao_social, preco_unitario=180.00,
-                                quantidade=5, preco_total=900.00, prazo_entrega_dias=10,
-                                condicao_pagamento="À vista", selecionada=False, created_by=gestor.id)
-            db.add_all([cot1, cot2])
-            db.flush()
+            # Cotação para req2
+            cot1 = CompCotacao(requisicao_id=req2.id, requisicao_item_id=ri2a.id,
+                                fornecedor_id=forn_seed[1].id, fornecedor_nome=forn_seed[1].razao_social,
+                                item_id=itens_seed[2].id, item_nome=itens_seed[2].nome,
+                                preco_unitario=180.00, quantidade=5, preco_total=900.00,
+                                prazo_entrega_dias=10, condicao_pagamento="À vista",
+                                selecionada=False, created_by=gestor.id)
+            # Cotação selecionada para ri1a
+            cot2 = CompCotacao(requisicao_id=req1.id, requisicao_item_id=ri1a.id,
+                                fornecedor_id=forn_seed[0].id, fornecedor_nome=forn_seed[0].razao_social,
+                                item_id=itens_seed[0].id, item_nome=itens_seed[0].nome,
+                                preco_unitario=45.90, quantidade=10, preco_total=459.00,
+                                prazo_entrega_dias=5, condicao_pagamento="30 dias",
+                                selecionada=True, created_by=gestor.id)
+            db.add_all([cot1, cot2]); db.flush()
 
+            # Pedido de compra para ri1a
             pc1 = CompPedido(
                 numero="PC-0001", requisicao_id=req1.id, requisicao_numero=req1.numero,
+                requisicao_item_id=ri1a.id,
                 item_id=itens_seed[0].id, item_nome=itens_seed[0].nome, item_unidade=itens_seed[0].unidade,
                 quantidade=10, fornecedor_id=forn_seed[0].id, fornecedor_nome=forn_seed[0].razao_social,
-                cotacao_id=cot1.id, preco_unitario=45.90, preco_total=459.00,
+                cotacao_id=cot2.id, preco_unitario=45.90, preco_total=459.00,
                 condicao_pagamento="30 dias", prazo_entrega_dias=5,
                 previsao_entrega=hoje + timedelta(days=5),
                 status="aprovado", aprovado_por_id=admin.id, aprovado_por_nome=admin.nome,
                 created_by=gestor.id, created_by_nome=gestor.nome
             )
-            db.add(pc1)
-            db.flush()
+            db.add(pc1); db.flush()
             db.add(CompHistorico(pedido_id=pc1.id, pedido_numero=pc1.numero,
                                   status_anterior="aguardando_aprovacao", status_novo="aprovado",
                                   usuario_id=admin.id, usuario_nome=admin.nome, observacao="Aprovado"))
